@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Input Ekskul — CQlass</title>
+<style>
+:root{--p:#0a6e6e;--bg:#f3f8f7;--b:#dce8e6;--t:#183433;--m:#6d807e}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);font-family:Arial,sans-serif;color:var(--t)}
+.wrap{max-width:900px;margin:auto;padding:16px}.head{background:var(--p);color:#fff;padding:18px;border-radius:18px;margin-bottom:14px}
+.head h1{font-size:20px;margin:0 0 5px}.head p{margin:0;font-size:12px;opacity:.9}
+.card{background:#fff;border:1px solid var(--b);border-radius:16px;padding:14px;margin-bottom:12px}
+label{display:block;font-size:11px;font-weight:800;margin:10px 0 6px}select,input,textarea{width:100%;padding:11px;border:1px solid var(--b);border-radius:11px;font:inherit;background:#fff}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.btn{border:0;background:var(--p);color:#fff;border-radius:11px;padding:12px 16px;font-weight:800;cursor:pointer}
+.btn2{border:1px solid var(--b);background:#fff;color:var(--t);border-radius:9px;padding:7px 9px;cursor:pointer}
+.student{display:grid;grid-template-columns:minmax(150px,1fr) 110px 90px minmax(130px,1fr);gap:8px;align-items:center;padding:9px 0;border-bottom:1px solid var(--b)}
+.student:last-child{border-bottom:0}.name{font-size:12px;font-weight:800}.small{font-size:10px;color:var(--m)}.hidden{display:none!important}
+.top-actions{display:flex;gap:7px;flex-wrap:wrap;margin:10px 0}.msg{padding:10px;border-radius:10px;font-size:12px;background:#eef7f6;color:var(--p);margin-bottom:10px}
+@media(max-width:650px){.grid{grid-template-columns:1fr}.student{grid-template-columns:1fr 105px 80px}.note{grid-column:1/-1}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head"><h1>Input Ekstrakurikuler</h1><p>Tanpa login. Pilih ekskul, pelatih/kelas, lalu isi materi, absensi, dan nilai.</p></div>
+  <div id="msg"></div>
+  <div class="card">
+    <div class="grid">
+      <div><label>Ekskul</label><select id="ex"><option value="">Pilih ekskul...</option></select></div>
+      <div id="asg-wrap" class="hidden"><label id="asg-label">Pelatih / Kelompok</label><select id="asg"></select></div>
+      <div><label>Tanggal Pertemuan</label><input id="date" type="date"></div>
+      <div><label>Materi</label><input id="material" placeholder="Contoh: Speaking practice — introducing myself"></div>
+    </div>
+    <label>Catatan Pertemuan (opsional)</label><textarea id="notes" rows="2"></textarea>
+  </div>
+  <div id="roster-card" class="card hidden">
+    <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap">
+      <div><b>Peserta Ekskul</b><div id="count" class="small"></div></div>
+      <div class="top-actions"><button class="btn2" onclick="setAll('Hadir')">Semua Hadir</button><button class="btn2" onclick="clearScores()">Kosongkan Nilai</button></div>
+    </div>
+    <div id="students"></div>
+    <div style="text-align:center;margin-top:14px"><button id="save" class="btn" onclick="saveSession()">Simpan Pertemuan</button></div>
+  </div>
+</div>
+<script>
+const SUPABASE_URL='https://lmglkxzemtvxcgktiord.supabase.co';
+const SUPABASE_KEY='sb_publishable_3HyNVUYXakILMKo2SK-DJw_ka7-Yx93';
+const API=SUPABASE_URL+'/functions/v1/extracurricular-public';
+let BOOT={extracurriculars:[],assignments:[]}, roster=[];
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+function message(t,bad=false){$('msg').innerHTML=t?`<div class="msg" style="${bad?'background:#fff0f0;color:#9a3333':''}">${esc(t)}</div>`:''}
+async function api(action,data={}){const r=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json','apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY},body:JSON.stringify({action,...data})});const j=await r.json();if(!r.ok||!j.success)throw new Error(j.error||'Gagal');return j}
+function today(){const d=new Date();return d.toISOString().slice(0,10)}
+async function init(){try{$('date').value=today();const j=await api('bootstrap');BOOT=j; $('ex').innerHTML='<option value="">Pilih ekskul...</option>'+j.extracurriculars.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('');}catch(e){message(e.message,true)}}
+$('ex').addEventListener('change',()=>{const id=$('ex').value;const a=BOOT.assignments.filter(x=>x.extracurricular_id===id);$('roster-card').classList.add('hidden');roster=[];if(!id){$('asg-wrap').classList.add('hidden');return}
+ if(!a.length){$('asg-wrap').classList.remove('hidden');$('asg').innerHTML='<option value="">Master ekskul belum disinkronkan</option>';message('Ekskul ini belum memiliki kelompok/peserta hasil sinkron.',true);return}
+ const hasCoach=a.some(x=>String(x.coach_name||'').trim());
+ $('asg-label').textContent=hasCoach?'Pelatih / Kelompok':'Kelompok / Jadwal';
+ $('asg').innerHTML=a.map(x=>`<option value="${x.id}">${esc(x.label||x.coach_name||'Kelompok')}</option>`).join('');
+ if(a.length===1){$('asg-wrap').classList.add('hidden');$('asg').value=a[0].id;loadRoster()}else{$('asg-wrap').classList.remove('hidden');$('asg').insertAdjacentHTML('afterbegin',`<option value="">${hasCoach?'Pilih pelatih / kelompok...':'Pilih kelompok / jadwal...'}</option>`);$('asg').value='';message('')}
+});
+$('asg').addEventListener('change',loadRoster);
+$('date').addEventListener('change',()=>{if($('asg').value)loadExisting()});
+async function loadRoster(){const id=$('asg').value;if(!id)return;try{message('Memuat peserta...');const j=await api('roster',{assignment_id:id});roster=j.students||[];renderRoster();await loadExisting();message('')}catch(e){message(e.message,true)}}
+function renderRoster(){if(!roster.length){$('roster-card').classList.add('hidden');message('Belum ada peserta untuk pelatih/kelas ini.',true);return}
+ $('roster-card').classList.remove('hidden');$('count').textContent=roster.length+' siswa';
+ $('students').innerHTML=roster.map((s,i)=>`<div class="student" data-id="${s.id}"><div class="name">${i+1}. ${esc(s.full_name)}</div><select class="att"><option>Hadir</option><option>Izin</option><option>Sakit</option><option>Alfa</option></select><input class="score" type="number" min="0" max="100" step="1" placeholder="Nilai"><input class="note" placeholder="Catatan siswa (opsional)"></div>`).join('')}
+async function loadExisting(){const id=$('asg').value,d=$('date').value;if(!id||!d||!roster.length)return;try{const j=await api('load_session',{assignment_id:id,session_date:d});if(!j.session)return;
+ $('material').value=j.session.material||'';$('notes').value=j.session.notes||'';const map=new Map((j.students||[]).map(x=>[x.student_id,x]));
+ document.querySelectorAll('.student').forEach(row=>{const x=map.get(row.dataset.id);if(!x)return;row.querySelector('.att').value=x.attendance_status||'Hadir';row.querySelector('.score').value=x.score??'';row.querySelector('.note').value=x.student_note||''});
+ message('Data tanggal ini sudah pernah diisi. Anda dapat memperbaruinya.')}catch(e){message(e.message,true)}}
+function setAll(v){document.querySelectorAll('.att').forEach(x=>x.value=v)}
+function clearScores(){document.querySelectorAll('.score').forEach(x=>x.value='')}
+async function saveSession(){const assignment_id=$('asg').value,session_date=$('date').value,material=$('material').value.trim();if(!assignment_id)return message('Pilih pelatih/kelas.',true);if(!material)return message('Materi wajib diisi.',true);
+ const items=[...document.querySelectorAll('.student')].map(row=>({student_id:row.dataset.id,attendance_status:row.querySelector('.att').value,score:row.querySelector('.score').value,student_note:row.querySelector('.note').value.trim()}));
+ const b=$('save');b.disabled=true;b.textContent='Menyimpan...';try{const j=await api('save_session',{assignment_id,session_date,material,notes:$('notes').value.trim(),items});message('Berhasil disimpan: '+j.saved+' siswa.');}catch(e){message(e.message,true)}finally{b.disabled=false;b.textContent='Simpan Pertemuan'}}
+init();
+</script>
+</body></html>
