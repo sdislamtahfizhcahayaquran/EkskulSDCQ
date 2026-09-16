@@ -88,11 +88,41 @@ function todayLocal(){const d=new Date();d.setMinutes(d.getMinutes()-d.getTimezo
 
 document.querySelectorAll('.tab').forEach(btn=>btn.addEventListener('click',()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x===btn));document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));$(`panel-${btn.dataset.tab}`).classList.add('active');if(btn.dataset.tab==='nilai'&&$('assignment').value)loadAssessments()}));
 
-async function bootstrap(){try{const d=await api('bootstrap');state.extracurriculars=d.extracurriculars||[];state.assignments=d.assignments||[];$('ekskul').innerHTML='<option value="">Pilih Ekskul</option>'+state.extracurriculars.map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('');const saved=localStorage.getItem('cqlass_extrakurikuler');if(saved&&state.extracurriculars.some(x=>x.id===saved)){$('ekskul').value=saved;refreshAssignments()}}catch(e){$('ekskul').innerHTML='<option value="">Gagal memuat</option>';setStatus('absenStatus',e.message,'err')}}
-function refreshAssignments(){const eid=$('ekskul').value;localStorage.setItem('cqlass_extrakurikuler',eid||'');const rows=state.assignments.filter(a=>a.extracurricular_id===eid);$('assignment').disabled=!eid;$('assignment').innerHTML='<option value="">Pilih Pelatih / Kelompok</option>'+rows.map(a=>`<option value="${esc(a.id)}">${esc(a.label||a.coach_name||'Pelatih')}</option>`).join('');const saved=localStorage.getItem('cqlass_assignment');if(saved&&rows.some(x=>x.id===saved)){$('assignment').value=saved;onAssignmentChanged()}else resetTables()}
+function clearRememberedSelection(){
+  localStorage.removeItem('cqlass_extrakurikuler');
+  localStorage.removeItem('cqlass_assignment');
+}
+async function bootstrap(){
+  clearRememberedSelection();
+  resetTables();
+  $('ekskul').value='';
+  $('assignment').value='';
+  $('assignment').disabled=true;
+  $('assignment').innerHTML='<option value="">Pilih ekskul terlebih dahulu</option>';
+  try{
+    const d=await api('bootstrap');
+    state.extracurriculars=d.extracurriculars||[];
+    state.assignments=d.assignments||[];
+    $('ekskul').innerHTML='<option value="">Pilih Ekskul</option>'+state.extracurriculars.map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('');
+    $('ekskul').value='';
+  }catch(e){
+    $('ekskul').innerHTML='<option value="">Gagal memuat</option>';
+    setStatus('absenStatus',e.message,'err');
+  }
+}
+function refreshAssignments(){
+  const eid=$('ekskul').value;
+  const rows=state.assignments.filter(a=>a.extracurricular_id===eid);
+  $('assignment').disabled=!eid;
+  $('assignment').innerHTML=eid?'<option value="">Pilih Pelatih / Kelompok</option>'+rows.map(a=>`<option value="${esc(a.id)}">${esc(a.label||a.coach_name||'Pelatih')}</option>`).join(''):'<option value="">Pilih ekskul terlebih dahulu</option>';
+  $('assignment').value='';
+  resetTables();
+  clearStatus('absenStatus');
+  clearStatus('nilaiStatus');
+}
 $('ekskul').addEventListener('change',refreshAssignments);$('assignment').addEventListener('change',onAssignmentChanged);
-function resetTables(){state.roster=[];state.academicYearId=null;state.assessmentRows=[];state.assessmentMeta={};$('memberInfo').textContent='Setelah Pelatih/Kelompok dipilih, hanya anggota kelompok tersebut yang ditampilkan.';$('absenBody').innerHTML='<tr><td colspan="4" class="empty">Pilih Pelatih/Kelompok.</td></tr>';$('nilaiBody').innerHTML='<tr><td colspan="7" class="empty">Pilih Pelatih/Kelompok.</td></tr>'}
-async function onAssignmentChanged(){const id=$('assignment').value;localStorage.setItem('cqlass_assignment',id||'');clearStatus('absenStatus');clearStatus('nilaiStatus');if(!id){resetTables();return}try{setStatus('absenStatus','Memuat anggota kelompok...','info');const d=await api('roster',{assignment_id:id});state.roster=d.students||[];$('memberInfo').textContent=`Anggota kelompok terpilih: ${state.roster.length} siswa. Hanya siswa yang diajar oleh pelatih/kelompok ini yang ditampilkan.`;renderAbsen();clearStatus('absenStatus');await loadSession(true)}catch(e){setStatus('absenStatus',e.message,'err')}}
+function resetTables(){state.roster=[];state.academicYearId=null;state.assessmentRows=[];state.assessmentMeta={};$('memberInfo').textContent='Setelah Pelatih/Kelompok dipilih, hanya anggota kelompok tersebut yang ditampilkan.';$('absenBody').innerHTML='<tr><td colspan="4" class="empty">Pilih Ekskul dan Pelatih/Kelompok.</td></tr>';$('nilaiBody').innerHTML='<tr><td colspan="7" class="empty">Pilih Ekskul dan Pelatih/Kelompok.</td></tr>';$('material').value='';$('sessionNotes').value=''}
+async function onAssignmentChanged(){const id=$('assignment').value;clearStatus('absenStatus');clearStatus('nilaiStatus');if(!id){resetTables();return}try{setStatus('absenStatus','Memuat anggota kelompok...','info');const d=await api('roster',{assignment_id:id});state.roster=d.students||[];$('memberInfo').textContent=`Anggota kelompok terpilih: ${state.roster.length} siswa. Hanya siswa yang diajar oleh pelatih/kelompok ini yang ditampilkan.`;renderAbsen();clearStatus('absenStatus');await loadSession(true)}catch(e){setStatus('absenStatus',e.message,'err')}}
 function renderAbsen(savedMap=new Map()){if(!state.roster.length){$('absenBody').innerHTML='<tr><td colspan="4" class="empty">Tidak ada anggota pada kelompok ini.</td></tr>';return}$('absenBody').innerHTML=state.roster.map((s,i)=>{const v=savedMap.get(s.id)||{};const att=v.attendance_status||'Hadir';return `<tr data-student-id="${esc(s.id)}"><td class="num">${i+1}</td><td class="name">${esc(s.full_name)}</td><td><select class="attendance"><option ${att==='Hadir'?'selected':''}>Hadir</option><option ${att==='Izin'?'selected':''}>Izin</option><option ${att==='Sakit'?'selected':''}>Sakit</option><option ${att==='Alfa'?'selected':''}>Alfa</option></select></td><td><input class="student-note" value="${esc(v.student_note||'')}" placeholder="Opsional"></td></tr>`}).join('')}
 async function loadSession(silent=false){const aid=$('assignment').value,date=$('sessionDate').value;if(!aid||!date)return;const btn=$('loadSession');if(!silent)busy(btn,true,'Memuat...');try{const d=await api('load_session',{assignment_id:aid,session_date:date});const map=new Map((d.students||[]).map(x=>[x.student_id,x]));renderAbsen(map);$('material').value=d.session?.material||'';$('sessionNotes').value=d.session?.notes||'';if(!silent)setStatus('absenStatus',d.session?'Data pertemuan berhasil dimuat.':'Belum ada data pada tanggal ini.','info')}catch(e){setStatus('absenStatus',e.message,'err')}finally{if(!silent)busy(btn,false)}}
 $('loadSession').addEventListener('click',()=>loadSession(false));$('sessionDate').addEventListener('change',()=>{if($('assignment').value)loadSession(true)});
